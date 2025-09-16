@@ -1,0 +1,171 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "mongodb"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String    @id @default(auto()) @map("_id") @db.ObjectId
+  email         String    @unique
+  name          String?
+  image         String?
+  emailVerified DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  
+  // RBAC fields
+  role          UserRole  @default(REGULAR)
+  permissions   UserPermission[]
+  expiresAt     DateTime? // For technician role
+  isActive      Boolean   @default(true)
+  
+  // Relations
+  accounts      Account[]
+  sessions      Session[]
+  homeId        String?   @db.ObjectId
+  home          Home?     @relation(fields: [homeId], references: [id])
+  
+  @@map("users")
+}
+
+model Home {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  name      String
+  address   String?
+  ownerId   String   @db.ObjectId
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  // Relations
+  users     User[]
+  scenes    Scene[]
+  accessPasses AccessPass[]
+  
+  @@map("homes")
+}
+
+model Scene {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  name        String
+  description String?
+  config      Json     // Scene configuration
+  isSafe      Boolean  @default(true) // Safe scenes can be run by technicians
+  homeId      String   @db.ObjectId
+  createdBy   String   @db.ObjectId
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  home        Home     @relation(fields: [homeId], references: [id])
+  
+  @@map("scenes")
+}
+
+model AccessPass {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  name        String
+  code        String   @unique
+  isActive    Boolean  @default(true)
+  expiresAt   DateTime?
+  homeId      String   @db.ObjectId
+  createdBy   String   @db.ObjectId
+  createdAt   DateTime @default(now())
+  
+  home        Home     @relation(fields: [homeId], references: [id])
+  
+  @@map("access_passes")
+}
+
+model UserPermission {
+  id         String     @id @default(auto()) @map("_id") @db.ObjectId
+  userId     String     @db.ObjectId
+  capability Capability
+  level      PermissionLevel
+  expiresAt  DateTime?
+  needsApproval Boolean @default(false)
+  
+  user       User       @relation(fields: [userId], references: [id])
+  
+  @@unique([userId, capability])
+  @@map("user_permissions")
+}
+
+// NextAuth required models
+model Account {
+  id                String  @id @default(auto()) @map("_id") @db.ObjectId
+  userId            String  @db.ObjectId
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.String
+  access_token      String? @db.String
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.String
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@map("accounts")
+}
+
+model Session {
+  id           String   @id @default(auto()) @map("_id") @db.ObjectId
+  sessionToken String   @unique
+  userId       String   @db.ObjectId
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+}
+
+model VerificationToken {
+  id         String   @id @default(auto()) @map("_id") @db.ObjectId
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+  @@map("verificationtokens")
+}
+
+enum UserRole {
+  OWNER
+  ADMIN
+  CO_OWNER
+  REGULAR
+  TECHNICIAN
+}
+
+enum Capability {
+  INVITE_REMOVE_USERS
+  TRANSFER_OWNERSHIP
+  CREATE_ACCESS_PASSES
+  ENERGY_CONTROLS
+  CLIMATE_CONTROLS
+  WATER_SYSTEM
+  ENTRANCE_SECURITY
+  CAMERAS
+  RUN_SCENES
+  CREATE_EDIT_SCENES
+  START_OTA
+  APPROVE_REMOTE_SUPPORT
+}
+
+enum PermissionLevel {
+  FULL
+  LIMITED
+  VIEW_ONLY
+  NONE
+}
