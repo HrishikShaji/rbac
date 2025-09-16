@@ -34,17 +34,8 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
 							existingUser.expiresAt < new Date()) {
 							return false; // Deny sign in for expired technicians
 						}
-					} else {
-						// New user - assign default role as REGULAR
-						// You might want to have a different logic for assigning initial roles
-						await prisma.user.update({
-							where: { email: user.email! },
-							data: {
-								role: UserRole.REGULAR,
-								isActive: true,
-							}
-						});
 					}
+					// Note: New users will be handled in the createUser event
 
 					return true;
 				} catch (error) {
@@ -71,6 +62,10 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
 					token.homeId = dbUser.homeId;
 					token.isActive = dbUser.isActive;
 					token.expiresAt = dbUser.expiresAt;
+				} else {
+					// Fallback for new users (set defaults)
+					token.role = UserRole.REGULAR;
+					token.isActive = true;
 				}
 			}
 			return token;
@@ -96,14 +91,20 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
 	},
 	events: {
 		async createUser({ user }) {
-			// Set default role for new users
-			await prisma.user.update({
-				where: { id: user.id },
-				data: {
-					role: UserRole.REGULAR,
-					isActive: true,
-				}
-			});
+			try {
+				// Set default role for new users
+				await prisma.user.update({
+					where: { id: user.id },
+					data: {
+						role: UserRole.REGULAR,
+						isActive: true,
+					}
+				});
+				console.log(`New user created with REGULAR role: ${user.email}`);
+			} catch (error) {
+				console.error("Error setting default role for new user:", error);
+				// Don't throw error here as it would prevent user creation
+			}
 		}
 	}
 });
